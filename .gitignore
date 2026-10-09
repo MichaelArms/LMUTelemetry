@@ -1,0 +1,26 @@
+## Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+
+## Visual Studio / IDE
+.vs/
+*.user
+*.suo
+*.cache
+
+## NuGet
+packages/
+*.nupkg
+
+## OS
+Thumbs.db
+.DS_Store
+
+## Telemetry data and app data: NEVER commit
+*.duckdb
+*.db
+*.csv
+lmu_debug.txt
+SavedLaps/
