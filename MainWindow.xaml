@@ -15,14 +15,14 @@
 
         <!-- Toolbar -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-            <Button Content="Apri file .duckdb" Width="170" Height="36" Margin="0,0,8,0" Click="OpenDuckDb_Click"/>
-            <Button Content="Esporta CSV (Excel)" Width="170" Height="36" Margin="0,0,8,0" Click="ExportCsv_Click"/>
+            <Button Content="Open .duckdb file" Width="170" Height="36" Margin="0,0,8,0" Click="OpenDuckDb_Click"/>
+            <Button Content="Export CSV (Excel)" Width="170" Height="36" Margin="0,0,8,0" Click="ExportCsv_Click"/>
             <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="13" Foreground="#7FE07F" Margin="14,0,0,0"/>
         </StackPanel>
 
-        <!-- Selettori canale -->
+        <!-- Channel selectors -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
-            <TextBlock Text="Canali:" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="White"/>
+            <TextBlock Text="Channels:" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="White"/>
             <CheckBox x:Name="ChkSpeed"    Content="Speed"    IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkThrottle" Content="Throttle" IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkBrake"    Content="Brake"    IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
@@ -30,18 +30,19 @@
             <CheckBox x:Name="ChkRpm"      Content="RPM"      IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
         </StackPanel>
 
-        <!-- Info sessione -->
+        <!-- Session info -->
         <TextBlock Grid.Row="2" x:Name="SessionInfo" FontSize="13" Foreground="#B0B0B0" Margin="0,0,0,8"/>
 
-        <!-- Contenuto principale -->
+        <!-- Main content: resizable split -->
         <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240"/>
+                <ColumnDefinition Width="300" MinWidth="240"/>
+                <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Pannello sinistro -->
-            <Border Grid.Column="0" Background="#252528" BorderBrush="#3A3A3E" BorderThickness="1" Margin="0,0,8,0">
+            <!-- Left panel -->
+            <Border Grid.Column="0" Background="#252528" BorderBrush="#3A3A3E" BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -52,7 +53,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Giri sessione (max 2)" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock Grid.Row="0" Text="Session laps (max 2)" FontSize="13" FontWeight="SemiBold"
                                Foreground="White" Margin="8,8,8,4"/>
 
                     <ListBox Grid.Row="1" x:Name="LapList"
@@ -70,10 +71,10 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Button Grid.Row="2" x:Name="BtnSaveLap" Content="Salva giro selezionato"
+                    <Button Grid.Row="2" x:Name="BtnSaveLap" Content="Save selected lap"
                             Height="30" Margin="8,6" Click="SaveLap_Click" IsEnabled="False"/>
 
-                    <TextBlock Grid.Row="3" Text="Giri salvati (libreria)" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock Grid.Row="3" Text="Saved laps (library)" FontSize="13" FontWeight="SemiBold"
                                Foreground="White" Margin="8,10,8,4"/>
 
                     <ListBox Grid.Row="4" x:Name="SavedList"
@@ -103,8 +104,12 @@
                 </Grid>
             </Border>
 
-            <!-- Grafico -->
-            <Border Grid.Column="1" Background="#212124" BorderBrush="#3A3A3E" BorderThickness="1">
+            <!-- GridSplitter -->
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
+                          Background="#2A2A2E" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- Chart -->
+            <Border Grid.Column="2" Background="#212124" BorderBrush="#3A3A3E" BorderThickness="1">
                 <Canvas x:Name="ChartCanvas" ClipToBounds="True" SizeChanged="ChartCanvas_SizeChanged"/>
             </Border>
         </Grid>

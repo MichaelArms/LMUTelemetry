@@ -39,8 +39,8 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFileDialog
         {
-            Filter = "LMU Telemetry (*.duckdb;*.db)|*.duckdb;*.db|Tutti i file (*.*)|*.*",
-            Title = "Seleziona il file di telemetria di Le Mans Ultimate"
+            Filter = "LMU Telemetry (*.duckdb;*.db)|*.duckdb;*.db|All Files (*.*)|*.*",
+            Title = "Select LMU Telemetry File"
         };
 
         if (dlg.ShowDialog() == true)
@@ -121,19 +121,19 @@ public partial class MainWindow : Window
             var meta = await Task.Run(() => _reader.ReadMetadata(filePath));
             _currentTrackName = DetectTrackName(meta, filePath);
             TrackRefText.Text = _currentTrackName != ""
-                ? $"Tracciato di riferimento: {_currentTrackName}"
-                : "Tracciato: non rilevato";
+                ? $"Reference Track: {_currentTrackName}"
+                : "Track: not detected";
 
             BtnSaveLap.IsEnabled = _lapInfos.Count > 0;
             RefreshSavedList();
 
             SessionInfo.Text = $"{_allPoints.Count:N0} campioni  |  {_lapInfos.Count} giri";
-            StatusText.Text = "Sessione caricata. Seleziona 1 o 2 giri.";
+            StatusText.Text = "Session loaded. Select 1 or 2 laps.";
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Errore";
-            MessageBox.Show(ex.Message, "Errore lettura telemetria",
+            StatusText.Text = "Error";
+            MessageBox.Show(ex.Message, "Error reading telemetry",
                             MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -230,7 +230,7 @@ public partial class MainWindow : Window
 
         if (entries == null || entries.Count == 0)
         {
-            Center(W, H, "Seleziona giri dalla sessione o dalla libreria salvati", 14, "#FFFFFF");
+            Center(W, H, "Select laps from the session or saved library", 14, "#FFFFFF");
             return;
         }
 
@@ -248,7 +248,7 @@ public partial class MainWindow : Window
 
         if (lanes.Count == 0)
         {
-            Center(W, H, "Seleziona almeno un canale", 14, "#FFFFFF");
+            Center(W, H, "Select at least one channel", 14, "#FFFFFF");
             return;
         }
 
@@ -442,7 +442,7 @@ public partial class MainWindow : Window
         if (LapList.SelectedItems.Count == 0 ||
             LapList.SelectedItems[0] is not LapInfo lapInfo)
         {
-            MessageBox.Show("Seleziona prima il giro che vuoi salvare.", "Nessun giro",
+            MessageBox.Show("Select the lap you want to save first", "No lap selected",
                             MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -460,7 +460,7 @@ public partial class MainWindow : Window
 
         if (lapPoints.Count < 2)
         {
-            MessageBox.Show("Il giro selezionato non ha abbastanza dati.", "Errore",
+            MessageBox.Show("The selected lap does not have enough data.", "Error",
                             MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -473,7 +473,7 @@ public partial class MainWindow : Window
             car: DetectCarName(meta),
             carClass: "",
             date: DetectDate(meta, filePath),
-            lapInfo: $"Lap {lapInfo.LapNumber}   •   {TimeSpan.FromSeconds(lapInfo.LapTime).ToString(@"hh\:mm\:ss\.fff")}"
+            lapInfo: $"Lap {lapInfo.LapNumber}   •   " + TimeSpan.FromSeconds(lapInfo.LapTime).ToString(@"hh\:mm\:ss\.fff")
         );
 
         if (dlg.ShowDialog() != true || !dlg.Confirmed) return;
@@ -495,11 +495,11 @@ public partial class MainWindow : Window
         {
             var path = _store.Save(saved);
             RefreshSavedList();
-            StatusText.Text = $"Giro salvato: {System.IO.Path.GetFileName(path)}";
+            StatusText.Text = $"Lap saved: {System.IO.Path.GetFileName(path)}";
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Errore salvataggio", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.Message, "Error saving lap", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -595,22 +595,22 @@ public partial class MainWindow : Window
     {
         if (_allPoints.Count == 0)
         {
-            MessageBox.Show("Prima carica una sessione.", "Nessun dato", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Please load a session first.", "No Data", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var dlg = new SaveFileDialog
         {
-            Filter = "CSV separato da punto e virgola (*.csv)|*.csv",
-            FileName = System.IO.Path.GetFileNameWithoutExtension(_selectedFile ?? "telemetria") + "_export.csv",
-            Title = "Esporta telemetria per Excel"
+            Filter = "CSV separated by semicolon (*.csv)|*.csv",
+            FileName = System.IO.Path.GetFileNameWithoutExtension(_selectedFile ?? "telemetry") + "_export.csv",
+            Title = "Export Telemetry for Excel"
         };
 
         if (dlg.ShowDialog() != true) return;
 
         try
         {
-            StatusText.Text = "Esportazione CSV...";
+            StatusText.Text = "Exporting CSV...";
 
             var c = CultureInfo.CurrentCulture;
             var sb = new StringBuilder(1 << 20);
@@ -634,7 +634,7 @@ public partial class MainWindow : Window
 
             File.WriteAllText(dlg.FileName, sb.ToString(), Encoding.UTF8);
 
-            StatusText.Text = $"CSV esportato: {System.IO.Path.GetFileName(dlg.FileName)}";
+            StatusText.Text = $"CSV exported: {System.IO.Path.GetFileName(dlg.FileName)}";
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(dlg.FileName)
             {
@@ -643,8 +643,8 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Errore export";
-            MessageBox.Show(ex.Message, "Errore esportazione", MessageBoxButton.OK, MessageBoxImage.Error);
+            StatusText.Text = "Error exporting";
+            MessageBox.Show(ex.Message, "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }
