@@ -28,6 +28,10 @@
             <CheckBox x:Name="ChkBrake"    Content="Brake"    IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkSteering" Content="Steering" IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkRpm"      Content="RPM"      IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+            <!-- AGGIUNGI QUESTO BLOCCO -->
+            <TextBlock Text="   X axis:" VerticalAlignment="Center" Margin="24,0,8,0" Foreground="White"/>
+            <RadioButton x:Name="RbTime" Content="Time" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="White" Click="Axis_Click"/>
+            <RadioButton x:Name="RbDistance" Content="Distance" VerticalAlignment="Center" Foreground="White" Click="Axis_Click"/>
         </StackPanel>
 
         <!-- Session info -->
@@ -46,41 +50,46 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Row="0" Text="Session laps (max 2)" FontSize="13" FontWeight="SemiBold"
-                               Foreground="White" Margin="8,8,8,4"/>
+                            Foreground="White" Margin="8,8,8,2"/>
 
-                    <ListBox Grid.Row="1" x:Name="LapList"
-                             SelectionMode="Multiple"
-                             SelectionChanged="LapList_SelectionChanged"
-                             Background="#252528" Foreground="White" BorderThickness="0">
+                    <TextBlock Grid.Row="1" x:Name="SessionHeader" FontSize="11" Foreground="#A0A0A5"
+                            TextWrapping="Wrap" Margin="8,0,8,4"/>
+
+                    <ListBox Grid.Row="2" x:Name="LapList"
+                            SelectionMode="Multiple"
+                            SelectionChanged="LapList_SelectionChanged"
+                            Background="#252528" Foreground="White" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Margin="4,2">
                                     <TextBlock Text="{Binding LapNumber, StringFormat='Lap {0}'}"
-                                               FontWeight="SemiBold" Margin="0,0,8,0" Foreground="White"/>
+                                            FontWeight="SemiBold" Margin="0,0,8,0" Foreground="White"/>
                                     <TextBlock Text="{Binding LapTimeFormatted}" Foreground="#A0A0A5"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Button Grid.Row="2" x:Name="BtnSaveLap" Content="Save selected lap"
+                    <Button Grid.Row="3" x:Name="BtnSaveLap" Content="Save selected lap"
                             Height="30" Margin="8,6" Click="SaveLap_Click" IsEnabled="False"/>
 
-                    <TextBlock Grid.Row="3" Text="Saved laps (library)" FontSize="13" FontWeight="SemiBold"
-                               Foreground="White" Margin="8,10,8,4"/>
+                    <TextBlock Grid.Row="4" Text="Saved laps (library)" FontSize="13" FontWeight="SemiBold"
+                            Foreground="White" Margin="8,10,8,4"/>
 
-                    <ListBox Grid.Row="4" x:Name="SavedList"
-                             SelectionMode="Multiple"
-                             SelectionChanged="SavedList_SelectionChanged"
-                             Background="#252528" Foreground="White" BorderThickness="0">
+                    <ListBox Grid.Row="5" x:Name="SavedList"
+                            SelectionMode="Multiple"
+                            SelectionChanged="SavedList_SelectionChanged"
+                            Background="#252528" Foreground="White" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="4,2">
@@ -99,8 +108,12 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <TextBlock Grid.Row="5" x:Name="TrackRefText" FontSize="10" Foreground="#7FE07F"
-                               TextWrapping="Wrap" Margin="8,6"/>
+                    <!-- NUOVO: pulsante per cancellare i giri salvati selezionati -->
+                    <Button Grid.Row="6" x:Name="BtnDeleteSavedLap" Content="Delete selected lap"
+                            Height="30" Margin="8,6" Click="DeleteSavedLap_Click"/>
+
+                    <TextBlock Grid.Row="7" x:Name="TrackRefText" FontSize="10" Foreground="#7FE07F"
+                            TextWrapping="Wrap" Margin="8,6"/>
                 </Grid>
             </Border>
 

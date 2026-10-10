@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private List<(string Path, SavedLap Lap)> _savedLaps = new();
 
     private string _currentTrackName = "";
+    private string _currentSessionDate = "";
     private bool _suppressSelectionEvents = false;
 
     private const double LeftPad = 74, RightPad = 12, TopPad = 6, BottomPad = 26;
@@ -65,6 +66,7 @@ public partial class MainWindow : Window
             ChartCanvas.Children.Clear();
             SessionInfo.Text = string.Empty;
             BtnSaveLap.IsEnabled = false;
+            SessionHeader.Text = string.Empty;
 
             _selectedFile = filePath;
             StatusText.Text = $"Lettura: {System.IO.Path.GetFileName(filePath)}...";
@@ -120,9 +122,15 @@ public partial class MainWindow : Window
             // Rileva tracciato
             var meta = await Task.Run(() => _reader.ReadMetadata(filePath));
             _currentTrackName = DetectTrackName(meta, filePath);
+            _currentSessionDate = DetectDate(meta, filePath);
+
             TrackRefText.Text = _currentTrackName != ""
-                ? $"Reference Track: {_currentTrackName}"
+                ? $"Reference track: {_currentTrackName}"
                 : "Track: not detected";
+
+            SessionHeader.Text = _currentTrackName != ""
+                ? $"{_currentTrackName}  •  {_currentSessionDate}"
+                : _currentSessionDate;
 
             BtnSaveLap.IsEnabled = _lapInfos.Count > 0;
             RefreshSavedList();
@@ -162,6 +170,8 @@ public partial class MainWindow : Window
                     Steering = p.Steering, RPM = p.RPM
                 }).ToList();
 
+            ComputeDistance(pts);   // <-- CALCOLA LA DISTANZA PER IL GIRO DI SESSIONE
+
             entries.Add(new ComparisonEntry
             {
                 Label = $"Lap {li.LapNumber} (sessione)",
@@ -173,51 +183,61 @@ public partial class MainWindow : Window
         }
 
         // Giri salvati
+        var toRemove = new List<SavedLapListItem>();
+
         foreach (SavedLapListItem item in SavedList.SelectedItems)
         {
             var saved = _savedLaps.FirstOrDefault(x => x.Path == item.FilePath).Lap;
             if (saved == null) continue;
 
+            // Verifica tracciato (rete di sicurezza: normalmente la lista è già filtrata)
             if (!string.IsNullOrWhiteSpace(refTrack) && !SavedLapStore.SameTrack(refTrack, saved.TrackName))
             {
-                var res = MessageBox.Show(
-                    $"Il giro salvato è su un tracciato diverso.\n\n" +
-                    $"Riferimento: {refTrack}\n" +
-                    $"Giro salvato: {saved.TrackName}\n\n" +
-                    @"Vuoi comunque aggiungerlo al confronto?",
-                    "Tracciato diverso",
-                    MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                MessageBox.Show(
+                    $"This saved lap is from a different track and will not be added to the comparison.\n\n" +
+                    $"Reference: {refTrack}\n" +
+                    $"Saved lap: {saved.TrackName}",
+                    "Different track",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
 
-                if (res != MessageBoxResult.Yes)
-                {
-                    _suppressSelectionEvents = true;
-                    SavedList.SelectedItems.Remove(item);
-                    _suppressSelectionEvents = false;
-                    continue;
-                }
+                toRemove.Add(item);   // lo rimuoveremo DOPO il foreach
+                continue;             // non aggiungerlo al confronto
             }
 
             if (string.IsNullOrWhiteSpace(refTrack)) refTrack = saved.TrackName;
+
+            var ptsSaved = saved.Points.Select(sp => new TelemetryPoint
+            {
+                Time = sp.T, Speed = sp.S, Throttle = sp.Th, Brake = sp.Br,
+                Steering = sp.St, RPM = sp.R
+            }).ToList();
+
+            ComputeDistance(ptsSaved);
 
             entries.Add(new ComparisonEntry
             {
                 Label = $"Lap {saved.LapNumber} • {saved.CarName}",
                 TrackName = saved.TrackName,
                 CarName = saved.CarName,
-                Points = saved.Points.Select(sp => new TelemetryPoint
-                {
-                    Time = sp.T, Speed = sp.S, Throttle = sp.Th, Brake = sp.Br,
-                    Steering = sp.St, RPM = sp.R
-                }).ToList(),
+                Points = ptsSaved,
                 IsSaved = true
             });
+        }
+
+        // Rimuovi gli elementi non coerenti DOPO il foreach (evita il crash)
+        if (toRemove.Count > 0)
+        {
+            _suppressSelectionEvents = true;
+            foreach (var it in toRemove)
+                SavedList.SelectedItems.Remove(it);
+            _suppressSelectionEvents = false;
         }
 
         if (entries.Count > 2)
             entries = entries.Take(2).ToList();
 
         DrawChart(entries);
-    }
+    }    
 
     private void DrawChart(List<ComparisonEntry> entries)
     {
@@ -230,9 +250,11 @@ public partial class MainWindow : Window
 
         if (entries == null || entries.Count == 0)
         {
-            Center(W, H, "Select laps from the session or saved library", 14, "#FFFFFF");
+            Center(W, H, "Select laps from the session or from the saved library", 14, "#FFFFFF");
             return;
         }
+
+        bool useDistance = RbDistance.IsChecked == true;
 
         var lanes = new List<Lane>();
         if (ChkSpeed.IsChecked == true)
@@ -252,16 +274,36 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Delta: solo in modalità distanza con esattamente 2 giri
+        var deltaData = new List<(double X, double Y)>();
+        bool showDelta = useDistance && entries.Count == 2;
+        if (showDelta)
+        {
+            deltaData = ComputeDelta(entries[0].Points, entries[1].Points);
+            if (deltaData.Count < 2) showDelta = false;
+        }
+
         double plotW = W - LeftPad - RightPad;
         double plotH = H - TopPad - BottomPad;
         if (plotW < 30 || plotH < 30) return;
 
-        double laneH = plotH / lanes.Count;
-        double tMax = entries.Max(e => e.Points.Count > 0 ? e.Points[^1].Time : 0);
-        double tSpan = Math.Max(1e-6, tMax);
+        int totalLanes = lanes.Count + (showDelta ? 1 : 0);
+        double laneH = plotH / totalLanes;
+        int laneOffset = showDelta ? 1 : 0;   // il delta occupa la corsia 0
 
-        // Sfondo corsie
-        for (int i = 0; i < lanes.Count; i++)
+        // Asse X comune (tempo o distanza)
+        Func<TelemetryPoint, double> selX = useDistance ? (p => p.Distance) : (p => p.Time);
+        double xMax = 0;
+        foreach (var e in entries)
+        {
+            if (e.Points.Count == 0) continue;
+            double last = selX(e.Points[^1]);
+            if (last > xMax) xMax = last;
+        }
+        double xSpan = Math.Max(1e-6, xMax);
+
+        // ---- Sfondo corsie ----
+        for (int i = 0; i < totalLanes; i++)
         {
             var bg = new Rectangle
             {
@@ -276,7 +318,7 @@ public partial class MainWindow : Window
             ChartCanvas.Children.Add(bg);
         }
 
-        // Griglia temporale
+        // ---- Griglia asse X ----
         for (int s = 0; s <= 10; s++)
         {
             double x = LeftPad + plotW * s / 10.0;
@@ -288,14 +330,65 @@ public partial class MainWindow : Window
             };
             ChartCanvas.Children.Add(grid);
 
-            double t = tSpan * s / 10.0;
-            var lab = Label($"{t:F1}s", 10, "#FFFFFF");
-            Canvas.SetLeft(lab, x - 16);
-            Canvas.SetTop(lab, TopPad + plotH + 6);
-            ChartCanvas.Children.Add(lab);
+            double xVal = xSpan * s / 10.0;
+            string lab = useDistance ? $"{xVal:F0} m" : $"{xVal:F1} s";
+            var labEl = Label(lab, 10, "#FFFFFF");
+            Canvas.SetLeft(labEl, x - 20);
+            Canvas.SetTop(labEl, TopPad + plotH + 6);
+            ChartCanvas.Children.Add(labEl);
         }
 
-        // Tracce
+        // ---- CORSIA DELTA (in alto, se attiva) ----
+        if (showDelta)
+        {
+            double dTop = TopPad;
+            double traceTop = dTop + 4;
+            double traceH = Math.Max(6, laneH - 11);
+
+            double dMin = deltaData.Min(p => p.Y);
+            double dMax = deltaData.Max(p => p.Y);
+            dMin = Math.Min(dMin, 0);   // forza lo zero visibile
+            dMax = Math.Max(dMax, 0);
+            double dSpan = dMax - dMin;
+            if (dSpan < 1e-9) { dMin -= 0.5; dSpan = 1.0; }
+
+            // linea dello zero
+            double zeroY = traceTop + traceH - ((0 - dMin) / dSpan) * traceH;
+            var zeroLine = new Line
+            {
+                X1 = LeftPad, Y1 = zeroY, X2 = LeftPad + plotW, Y2 = zeroY,
+                Stroke = new SolidColorBrush(Color.FromRgb(110, 110, 116)),
+                StrokeThickness = 1,
+                StrokeDashArray = new DoubleCollection { 2, 3 }
+            };
+            ChartCanvas.Children.Add(zeroLine);
+
+            // traccia delta
+            var poly = new Polyline
+            {
+                Points = BuildTraceXY(deltaData, 0, xSpan, dMin, dSpan, plotW, traceH, 2000),
+                Stroke = new SolidColorBrush(Color.FromRgb(255, 165, 0)),
+                StrokeThickness = 1.4,
+                RenderTransform = new TranslateTransform(LeftPad, traceTop)
+            };
+            ChartCanvas.Children.Add(poly);
+
+            // etichetta con gap finale
+            double finalGap = deltaData[^1].Y;
+            string gapTxt = finalGap >= 0 ? $"+{finalGap:F3}s" : $"{finalGap:F3}s";
+            var name = Label($"Δ Time (lap2 − lap1)   final gap: {gapTxt}", 11, Color.FromRgb(255, 165, 0));
+            name.FontWeight = FontWeights.SemiBold;
+            Canvas.SetLeft(name, 5);
+            Canvas.SetTop(name, dTop + 3);
+            ChartCanvas.Children.Add(name);
+
+            var unit = Label("s", 9, "#FFFFFF");
+            Canvas.SetLeft(unit, 5);
+            Canvas.SetTop(unit, dTop + 18);
+            ChartCanvas.Children.Add(unit);
+        }
+
+        // ---- TRACCE DEI CANALI ----
         for (int gi = 0; gi < entries.Count; gi++)
         {
             var entry = entries[gi];
@@ -304,7 +397,7 @@ public partial class MainWindow : Window
             for (int i = 0; i < lanes.Count; i++)
             {
                 var lane = lanes[i];
-                double laneTop = TopPad + i * laneH;
+                double laneTop = TopPad + (laneOffset + i) * laneH;
                 double traceTop = laneTop + 4;
                 double traceH = Math.Max(6, laneH - 11);
 
@@ -324,7 +417,7 @@ public partial class MainWindow : Window
 
                 var poly = new Polyline
                 {
-                    Points = BuildTrace(entry.Points, lane.Sel, 0, tSpan, vMin, vSpan, plotW, traceH, 2200),
+                    Points = BuildTrace(entry.Points, selX, lane.Sel, 0, xSpan, vMin, vSpan, plotW, traceH, 2200),
                     Stroke = brush,
                     StrokeThickness = dashed ? 1.1 : 1.5,
                     RenderTransform = new TranslateTransform(LeftPad, traceTop)
@@ -335,11 +428,11 @@ public partial class MainWindow : Window
             }
         }
 
-        // Etichette corsie
+        // ---- ETICHETTE CORSIE CANALI ----
         for (int i = 0; i < lanes.Count; i++)
         {
             var lane = lanes[i];
-            double laneTop = TopPad + i * laneH;
+            double laneTop = TopPad + (laneOffset + i) * laneH;
 
             var name = Label(lane.Name, 11, lane.Color);
             name.FontWeight = FontWeights.SemiBold;
@@ -353,8 +446,8 @@ public partial class MainWindow : Window
             ChartCanvas.Children.Add(unit);
         }
 
-        // Legenda
-        double legendY = TopPad + 2;
+        // ---- LEGENDA ----
+        double legendY = TopPad + (showDelta ? laneH + 4 : 2);
         for (int gi = 0; gi < entries.Count; gi++)
         {
             var txt = Label((gi == 0 ? "— " : "- - ") + entries[gi].Label, 11, gi == 0 ? "#FFFFFF" : "#B0B0B0");
@@ -362,12 +455,13 @@ public partial class MainWindow : Window
             Canvas.SetTop(txt, legendY + gi * 16);
             ChartCanvas.Children.Add(txt);
         }
-    }
+    }  
 
     private PointCollection BuildTrace(
         List<TelemetryPoint> points,
-        Func<TelemetryPoint, double> sel,
-        double tMin, double tSpan,
+        Func<TelemetryPoint, double> selX,
+        Func<TelemetryPoint, double> selY,
+        double xMin, double xSpan,
         double vMin, double vSpan,
         double width, double height,
         int buckets)
@@ -375,13 +469,13 @@ public partial class MainWindow : Window
         int n = points.Count;
         var pc = new PointCollection(Math.Min(n, buckets * 2) + 4);
 
-        double MapX(double t) => (t - tMin) / tSpan * width;
+        double MapX(double x) => (x - xMin) / xSpan * width;
         double MapY(double v) => height - ((v - vMin) / vSpan) * height;
 
         if (n <= buckets)
         {
             foreach (var p in points)
-                pc.Add(new Point(MapX(p.Time), MapY(sel(p))));
+                pc.Add(new Point(MapX(selX(p)), MapY(selY(p))));
             return pc;
         }
 
@@ -394,28 +488,81 @@ public partial class MainWindow : Window
             if (i1 <= i0) continue;
 
             int iLo = i0, iHi = i0;
-            double vLo = sel(points[i0]), vHi = vLo;
+            double vLo = selY(points[i0]), vHi = vLo;
 
             for (int i = i0 + 1; i < i1; i++)
             {
-                double v = sel(points[i]);
+                double v = selY(points[i]);
                 if (v < vLo) { vLo = v; iLo = i; }
                 if (v > vHi) { vHi = v; iHi = i; }
             }
 
             if (iLo <= iHi)
             {
-                pc.Add(new Point(MapX(points[iLo].Time), MapY(vLo)));
-                pc.Add(new Point(MapX(points[iHi].Time), MapY(vHi)));
+                pc.Add(new Point(MapX(selX(points[iLo])), MapY(vLo)));
+                pc.Add(new Point(MapX(selX(points[iHi])), MapY(vHi)));
             }
             else
             {
-                pc.Add(new Point(MapX(points[iHi].Time), MapY(vHi)));
-                pc.Add(new Point(MapX(points[iLo].Time), MapY(vLo)));
+                pc.Add(new Point(MapX(selX(points[iHi])), MapY(vHi)));
+                pc.Add(new Point(MapX(selX(points[iLo])), MapY(vLo)));
             }
         }
         return pc;
     }
+
+    // Variante generica per il delta (lista di coppie X,Y)
+    private PointCollection BuildTraceXY(
+        IReadOnlyList<(double X, double Y)> data,
+        double xMin, double xSpan,
+        double yMin, double ySpan,
+        double width, double height,
+        int buckets)
+    {
+        int n = data.Count;
+        var pc = new PointCollection(Math.Min(n, buckets * 2) + 4);
+
+        double MapX(double x) => (x - xMin) / xSpan * width;
+        double MapY(double y) => height - ((y - yMin) / ySpan) * height;
+
+        if (n <= buckets)
+        {
+            foreach (var p in data)
+                pc.Add(new Point(MapX(p.X), MapY(p.Y)));
+            return pc;
+        }
+
+        double step = (double)n / buckets;
+        for (int b = 0; b < buckets; b++)
+        {
+            int i0 = (int)(b * step);
+            int i1 = (int)((b + 1) * step);
+            if (i1 > n) i1 = n;
+            if (i1 <= i0) continue;
+
+            int iLo = i0, iHi = i0;
+            double vLo = data[i0].Y, vHi = vLo;
+
+            for (int i = i0 + 1; i < i1; i++)
+            {
+                double v = data[i].Y;
+                if (v < vLo) { vLo = v; iLo = i; }
+                if (v > vHi) { vHi = v; iHi = i; }
+            }
+
+            if (iLo <= iHi)
+            {
+                pc.Add(new Point(MapX(data[iLo].X), MapY(vLo)));
+                pc.Add(new Point(MapX(data[iHi].X), MapY(vHi)));
+            }
+            else
+            {
+                pc.Add(new Point(MapX(data[iHi].X), MapY(vHi)));
+                pc.Add(new Point(MapX(data[iLo].X), MapY(vLo)));
+            }
+        }
+        return pc;
+    }    
 
     private static TextBlock Label(string text, double size, string hex) =>
         new() { Text = text, FontSize = size, Foreground = Brush(hex) };
@@ -503,6 +650,65 @@ public partial class MainWindow : Window
         }
     }
 
+    private void DeleteSavedLap_Click(object sender, RoutedEventArgs e)
+    {
+        if (SavedList.SelectedItems.Count == 0)
+        {
+            MessageBox.Show("Select the saved lap(s) you want to delete first.",
+                            "No selection",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        int count = SavedList.SelectedItems.Count;
+        string message = count == 1
+            ? "Are you sure you want to delete the selected saved lap?\nThis action cannot be undone."
+            : $"Are you sure you want to delete {count} saved laps?\nThis action cannot be undone.";
+
+        var confirm = MessageBox.Show(message, "Confirm deletion",
+                                    MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        // Raccogli gli item da cancellare (evita di modificare la collezione durante l'iterazione)
+        var toDelete = SavedList.SelectedItems.Cast<SavedLapListItem>().ToList();
+
+        int deleted = 0;
+        var errors = new List<string>();
+
+        foreach (var item in toDelete)
+        {
+            try
+            {
+                if (System.IO.File.Exists(item.FilePath))
+                {
+                    System.IO.File.Delete(item.FilePath);
+                    deleted++;
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{System.IO.Path.GetFileName(item.FilePath)}: {ex.Message}");
+            }
+        }
+
+        // Aggiorna la lista e il grafico
+        RefreshSavedList();
+        UpdateComparison();
+
+        StatusText.Text = errors.Count == 0
+            ? $"Deleted {deleted} saved lap(s)."
+            : $"Deleted {deleted} lap(s), {errors.Count} error(s).";
+
+        if (errors.Count > 0)
+        {
+            MessageBox.Show("Some files could not be deleted:\n\n" + string.Join("\n", errors),
+                            "Deletion errors",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+
     private static List<SavedPoint> DownsampleForSave(List<TelemetryPoint> pts, int target)
     {
         var result = new List<SavedPoint>();
@@ -569,23 +775,80 @@ public partial class MainWindow : Window
         var m = System.Text.RegularExpressions.Regex.Match(filePath, @"\d{4}-\d{2}-\d{2}");
         return m.Success ? m.Value : DateTime.Now.ToString("yyyy-MM-dd");
     }
+    // Calcola la distanza percorsa integrando la velocità (m/s) sul tempo
+    private static void ComputeDistance(List<TelemetryPoint> pts)
+    {
+        if (pts.Count == 0) return;
+        pts[0].Distance = 0;
+        for (int i = 1; i < pts.Count; i++)
+        {
+            double dt = pts[i].Time - pts[i - 1].Time;
+            if (dt < 0) dt = 0;
+            double avgSpeed = (pts[i - 1].Speed + pts[i].Speed) / 2.0;
+            pts[i].Distance = pts[i - 1].Distance + avgSpeed * dt;
+        }
+    }
+
+    // Interpola il tempo a una data distanza (pts ordinati per Distance crescente)
+    private static double InterpTimeAtDistance(List<TelemetryPoint> pts, double d, ref int idx)
+    {
+        while (idx < pts.Count - 1 && pts[idx + 1].Distance < d) idx++;
+        if (idx >= pts.Count - 1) return double.NaN;
+
+        var p0 = pts[idx];
+        var p1 = pts[idx + 1];
+        double span = p1.Distance - p0.Distance;
+        if (span < 1e-9) return p0.Time;
+        double frac = (d - p0.Distance) / span;
+        return p0.Time + frac * (p1.Time - p0.Time);
+    }
+
+    // Calcola il delta temporale tra due giri in funzione della distanza
+    private static List<(double X, double Y)> ComputeDelta(List<TelemetryPoint> refLap, List<TelemetryPoint> cmpLap, int numPoints = 1200)
+    {
+        var result = new List<(double, double)>();
+        if (refLap.Count < 2 || cmpLap.Count < 2) return result;
+
+        double refLen = refLap[^1].Distance;
+        double cmpLen = cmpLap[^1].Distance;
+        double maxDist = Math.Min(refLen, cmpLen);
+        if (maxDist <= 1) return result;
+
+        int iRef = 0, iCmp = 0;
+        for (int k = 0; k <= numPoints; k++)
+        {
+            double d = maxDist * k / numPoints;
+            double tRef = InterpTimeAtDistance(refLap, d, ref iRef);
+            double tCmp = InterpTimeAtDistance(cmpLap, d, ref iCmp);
+            if (double.IsNaN(tRef) || double.IsNaN(tCmp)) continue;
+            result.Add((d, tCmp - tRef));   // positivo = giro2 più lento
+        }
+        return result;
+    }
+
+    private void Axis_Click(object sender, RoutedEventArgs e) => UpdateComparison();
 
     private void RefreshSavedList()
     {
-        _savedLaps = _store.LoadAll();
+        _savedLaps = _store.LoadAll();   // lista completa (serve per il lookup in UpdateComparison)
 
-        var items = _savedLaps.Select(x => new SavedLapListItem
-        {
-            FilePath = x.Path,
-            TrackName = x.Lap.TrackName,
-            CarName = x.Lap.CarName,
-            DisplayDate = x.Lap.LapDateIso,
-            LapNumber = x.Lap.LapNumber,
-            LapTimeFormatted = TimeSpan.FromSeconds(x.Lap.LapTimeSeconds).ToString(@"hh\:mm\:ss\.fff")
-        }).ToList();
+        // Mostra solo i giri coerenti col tracciato corrente.
+        // Se non c'è un tracciato di riferimento (nessun duckdb), mostra tutti.
+        var visible = _savedLaps
+            .Where(x => string.IsNullOrWhiteSpace(_currentTrackName)
+                        || SavedLapStore.SameTrack(_currentTrackName, x.Lap.TrackName))
+            .Select(x => new SavedLapListItem
+            {
+                FilePath = x.Path,
+                TrackName = x.Lap.TrackName,
+                CarName = x.Lap.CarName,
+                DisplayDate = x.Lap.LapDateIso,
+                LapNumber = x.Lap.LapNumber,
+                LapTimeFormatted = TimeSpan.FromSeconds(x.Lap.LapTimeSeconds).ToString(@"hh\:mm\:ss\.fff")
+            }).ToList();
 
         _suppressSelectionEvents = true;
-        SavedList.ItemsSource = items;
+        SavedList.ItemsSource = visible;
         SavedList.SelectedItems.Clear();
         _suppressSelectionEvents = false;
     }

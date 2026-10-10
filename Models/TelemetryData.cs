@@ -12,6 +12,7 @@ public class TelemetrySession
 public class TelemetryPoint
 {
     public double Time { get; set; }
+    public double Distance { get; set; }
     public double Speed { get; set; }
     public double Steering { get; set; }
     public double RPM { get; set; }
