@@ -242,7 +242,7 @@ Grouped by category. **Rows** are from the sample session above.
 
 | Quantity | Table | Unit |
 |----------|-------|------|
-| Speed | Ground Speed, GPS Speed | m/s (×3.6 → km/h) |
+| Speed | Ground Speed, GPS Speed | km/h (Ground Speed confirmed; GPS Speed assumed same) |
 | Throttle / Brake / Clutch | * Pos | 0..1 |
 | Temperatures | * Temp | °C *(assumed)* |
 | Pressures | TyresPressure, Turbo Boost | kPa *(assumed)* |

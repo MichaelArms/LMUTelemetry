@@ -1,3 +1,6 @@
+using System.Windows.Media;
+using System.ComponentModel;
+
 namespace LmuTelemetryDesktop.Models;
 
 public class TelemetrySession
@@ -26,22 +29,7 @@ public class LapMarker
     public int LapNumber { get; set; }
 }
 
-public class LapInfo
-{
-    public int LapNumber { get; set; }
-    public double LapTime { get; set; }
-    public double StartTime { get; set; }
-    public double EndTime { get; set; }
 
-    public string LapTimeFormatted
-    {
-        get
-        {
-            var ts = TimeSpan.FromSeconds(LapTime);
-            return ts.ToString(@"hh\:mm\:ss\.fff");
-        }
-    }
-}
 
 // ---- Giro salvato su disco (JSON) ----
 public class SavedLap
@@ -75,9 +63,34 @@ public class ComparisonEntry
     public string CarName { get; set; } = "";
     public List<TelemetryPoint> Points { get; set; } = new();
     public bool IsSaved { get; set; }
+    public object? SourceItem { get; set; }
 }
 
-public class SavedLapListItem
+public class LapInfo : INotifyPropertyChanged
+{
+    public int LapNumber { get; set; }
+    public double LapTime { get; set; }
+    public double StartTime { get; set; }
+    public double EndTime { get; set; }
+
+    public string LapTimeFormatted =>
+        TimeSpan.FromSeconds(LapTime).ToString(@"hh\:mm\:ss\.fff");
+
+    private SolidColorBrush _rowBg = new SolidColorBrush(Colors.Transparent);
+    public SolidColorBrush RowBg
+    {
+        get => _rowBg;
+        set
+        {
+            _rowBg = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowBg)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public class SavedLapListItem : INotifyPropertyChanged
 {
     public string FilePath { get; set; } = "";
     public string TrackName { get; set; } = "";
@@ -85,4 +98,17 @@ public class SavedLapListItem
     public string DisplayDate { get; set; } = "";
     public string LapTimeFormatted { get; set; } = "";
     public int LapNumber { get; set; }
+
+    private SolidColorBrush _rowBg = new SolidColorBrush(Colors.Transparent);
+    public SolidColorBrush RowBg
+    {
+        get => _rowBg;
+        set
+        {
+            _rowBg = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RowBg)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }

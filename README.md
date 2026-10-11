@@ -32,6 +32,8 @@ time-delta computation.
 - **Automatic time-delta trace** (distance mode): shows where lap 2 gains or
   loses time relative to lap 1, with final gap readout
 - Track-name validation when mixing laps from different sources
+- Click-to-toggle lap selection with colored bars; a third lap is rejected
+  with clear feedback (no hidden selection state)
 
 ### Reference lap library
 - Save reference laps to a local JSON library with track / car / class / date

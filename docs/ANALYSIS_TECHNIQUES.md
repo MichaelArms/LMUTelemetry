@@ -15,7 +15,8 @@ aligns them onto the full-rate timeline:
 ## 2. Distance integration
 
 Instead of using the low-rate `Lap Dist` table (~10 Hz), the tool integrates
-`Ground Speed` (m/s, full rate) over time with the trapezoidal rule:
+`Ground Speed` (km/h, full rate, converted to m/s by dividing by 3.6) over time
+with the trapezoidal rule:
 
 dist[i] = dist[i-1] + 0.5 * (speed[i-1] + speed[i]) * dt
 

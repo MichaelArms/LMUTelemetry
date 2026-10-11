@@ -5,6 +5,23 @@
         Height="850" Width="1400"
         Background="#1B1B1C" Foreground="White">
 
+
+    <Window.Resources>
+        <!-- Rimuove cornice e sfondo di selezione predefiniti: l'unico
+            indicatore visivo sarà la barretta colorata a sinistra -->
+        <Style x:Key="PlainListBoxItem" TargetType="ListBoxItem">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter Margin="0,1"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+    </Window.Resources>
+
     <Grid Margin="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -28,7 +45,7 @@
             <CheckBox x:Name="ChkBrake"    Content="Brake"    IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkSteering" Content="Steering" IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkRpm"      Content="RPM"      IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
-            <!-- AGGIUNGI QUESTO BLOCCO -->
+            <CheckBox x:Name="ChkHideShifts" Content="Hide shift cuts" IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <TextBlock Text="   X axis:" VerticalAlignment="Center" Margin="24,0,8,0" Foreground="White"/>
             <RadioButton x:Name="RbTime" Content="Time" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="White" Click="Axis_Click"/>
             <RadioButton x:Name="RbDistance" Content="Distance" VerticalAlignment="Center" Foreground="White" Click="Axis_Click"/>
@@ -66,16 +83,24 @@
                             TextWrapping="Wrap" Margin="8,0,8,4"/>
 
                     <ListBox Grid.Row="2" x:Name="LapList"
-                            SelectionMode="Multiple"
-                            SelectionChanged="LapList_SelectionChanged"
+                            SelectionMode="Single"
+                            PreviewMouseLeftButtonDown="LapsList_PreviewMouseLeftButtonDown"
+                            ItemContainerStyle="{StaticResource PlainListBoxItem}"
                             Background="#252528" Foreground="White" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal" Margin="4,2">
-                                    <TextBlock Text="{Binding LapNumber, StringFormat='Lap {0}'}"
-                                            FontWeight="SemiBold" Margin="0,0,8,0" Foreground="White"/>
-                                    <TextBlock Text="{Binding LapTimeFormatted}" Foreground="#A0A0A5"/>
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="6"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Rectangle Grid.Column="0" Width="6" Fill="{Binding RowBg}"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="6,3,4,3">
+                                        <TextBlock Text="{Binding LapNumber, StringFormat='Lap {0}'}"
+                                                FontWeight="SemiBold" Margin="0,0,8,0" Foreground="White"/>
+                                        <TextBlock Text="{Binding LapTimeFormatted}" Foreground="#A0A0A5"/>
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -87,23 +112,33 @@
                             Foreground="White" Margin="8,10,8,4"/>
 
                     <ListBox Grid.Row="5" x:Name="SavedList"
-                            SelectionMode="Multiple"
-                            SelectionChanged="SavedList_SelectionChanged"
+                            SelectionMode="Single"
+                            PreviewMouseLeftButtonDown="LapsList_PreviewMouseLeftButtonDown"
+                            ItemContainerStyle="{StaticResource PlainListBoxItem}"
                             Background="#252528" Foreground="White" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="4,2">
-                                    <TextBlock Foreground="White" FontWeight="SemiBold">
-                                        <Run Text="{Binding CarName}"/>
-                                        <Run Text="  "/>
-                                        <Run Text="{Binding LapTimeFormatted}" Foreground="#A0A0A5"/>
-                                    </TextBlock>
-                                    <TextBlock FontSize="10" Foreground="#7A7A80">
-                                        <Run Text="{Binding TrackName}"/>
-                                        <Run Text="  "/>
-                                        <Run Text="{Binding DisplayDate}"/>
-                                    </TextBlock>
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="6"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Rectangle Grid.Column="0" Width="6" Fill="{Binding RowBg}"/>
+                                    <StackPanel Grid.Column="1" Margin="6,3,4,3">
+                                        <TextBlock Foreground="White" FontWeight="SemiBold">
+                                            <Run Text="{Binding LapNumber, StringFormat='L{0}'}"/>
+                                            <Run Text=" • "/>
+                                            <Run Text="{Binding CarName}"/>
+                                            <Run Text="  "/>
+                                            <Run Text="{Binding LapTimeFormatted}" Foreground="#A0A0A5"/>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" Foreground="#7A7A80">
+                                            <Run Text="{Binding TrackName}"/>
+                                            <Run Text="  "/>
+                                            <Run Text="{Binding DisplayDate}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

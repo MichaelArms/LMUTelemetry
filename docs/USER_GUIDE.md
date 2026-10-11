@@ -8,17 +8,27 @@
 ## Loading a session
 
 1. Click **Open .duckdb file**.
-2. Select a file from
-   `Le Mans Ultimate/UserData/Telemetry/`.
+2. Select a file from `Le Mans Ultimate/UserData/Telemetry/`.
 3. The session is parsed automatically: the lap list appears on the left, with
    the detected **track name and date** shown above it.
 
-## Viewing a lap
+## Selecting laps (the comparison model)
 
-1. Click a lap in the **Session laps** list.
-2. The chart shows the enabled channels (Speed, Throttle, Brake, Steering, RPM)
-   as separate lanes.
-3. Toggle channels with the checkboxes at the top.
+- **Click a lap** in either list to add it to the comparison: the row gets a
+  **colored bar** (cyan = lap 1, orange = lap 2).
+- **Click a barred lap again** to remove it from the comparison.
+- The comparison holds **at most 2 laps**: clicking a third lap shows a message
+  and does nothing. Deselect one first.
+- The colored bars are the only selection indicator: what you see barred is
+  exactly what is being compared.
+
+## Viewing channels
+
+- Toggle channels with the checkboxes at the top (Speed, Throttle, Brake,
+  Steering, RPM).
+- **Hide shift cuts** (on by default) removes gear-shift throttle cuts and
+  downshift blips from the displayed traces for readability. Uncheck it to see
+  the raw data. CSV export and saved laps always keep raw data.
 
 ## Time vs Distance axis
 
@@ -28,49 +38,44 @@
 
 ## Comparing two laps
 
-1. Select up to **two laps** (Ctrl+click). They can come from the current
-   session, from your saved library, or one of each.
-2. The first lap is drawn with solid lines, the second with dashed lines.
-3. In **Distance** mode, an extra **Δ Time** lane appears at the top showing
-   where lap 2 gains or loses time relative to lap 1, with the final gap in the
-   lane header.
-
-> Laps from different tracks cannot be compared. If the tracks don't match, the
-> tool shows a warning and does not add the lap.
+- Each lap is drawn in its own color on every lane (cyan = lap 1,
+  orange = lap 2), MoTeC-style.
+- The legend under the chart shows a line sample and the lap time for each lap
+  (e.g. `L5 • 00:01:44.812`).
+- In **Distance** mode with 2 laps, an extra **Δ Time** lane (magenta) appears
+  at the top: positive = lap 2 slower at that point; the header shows the final
+  gap.
 
 ## Saving a reference lap
 
-1. Select a lap in the session list.
+1. Click the session lap you want to save (it gets a colored bar). Keep only
+   one session lap in the comparison for saving.
 2. Click **Save selected lap**.
-3. Confirm/edit the track, car, class, date and notes, then click **Save**.
-4. The lap is stored as a JSON file in
-   `%APPDATA%/LmuTelemetry/SavedLaps/` and appears in the **Saved laps** list.
-
-The saved-laps list is automatically filtered to the current track, so you only
-see comparable laps.
+3. Confirm/edit track, car, class, date and notes, then click **Save**.
+4. The lap is stored as JSON in `%APPDATA%/LmuTelemetry/SavedLaps/` and appears
+   in the **Saved laps** list, filtered to the current track.
 
 ## Deleting a saved lap
 
-Select one or more laps in the **Saved laps** list and click
-**Delete selected lap**. Confirm the prompt. This permanently removes the JSON
-file.
+1. Click the saved lap(s) you want to delete (they get colored bars; max 2).
+2. Click **Delete selected lap** and confirm. The JSON file is permanently
+   removed.
 
 ## Exporting to Excel
 
 Click **Export CSV (Excel)** to write the full-resolution session to a CSV file
-(`;` separator, Excel-friendly). The file opens directly and is useful for
-custom analysis, pivot tables or overlay charts.
+(`;` separator). Useful for custom analysis, pivot tables or overlay charts.
 
 ## Typical workflows
 
 ### Find where a setup change helped
-Save a reference lap with the old setup, then load the new-setup session and
-compare the two laps in Distance mode. The Δ Time lane shows exactly where the
-new setup is faster.
+Save a reference lap with the old setup, load the new-setup session, click both
+laps and switch to Distance mode: the Δ Time lane shows exactly where the new
+setup gains or loses.
 
 ### Compare LMH vs LMDh
-Save a lap from each class on the same track, then compare them in Distance
-mode to see where each prototype gains or loses time.
+Save a lap from each class on the same track, click both, use Distance mode to
+see where each prototype is stronger.
 
 ### Analyse a full stint
 For tyre/energy/fuel trends over many laps, use the CSV export and build charts
