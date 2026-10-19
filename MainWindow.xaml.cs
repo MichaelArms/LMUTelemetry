@@ -26,6 +26,12 @@ public partial class MainWindow : Window
     private readonly List<object> _comparison = new();
     private static readonly SolidColorBrush TransparentBrush = new SolidColorBrush(Colors.Transparent);
 
+    private double _plotW, _plotH, _xSpan;
+    private bool _axisDistance;
+    private Line? _cursorLine;
+    private TextBlock? _cursorLabel;
+    private double _cursorFrac = 0.0;
+
     private string _currentTrackName = "";
     private string _currentSessionDate = "";
     private bool _suppressSelectionEvents = false;
@@ -44,7 +50,44 @@ public partial class MainWindow : Window
         RefreshSavedList();
     }
 
-    private sealed record Lane(string Name, string Unit, Func<TelemetryPoint, double> Sel, Color Color);
+    private sealed class Lane
+    {
+        public Lane(string name, string unit, Func<TelemetryPoint, double> sel, Color color)
+        { Name = name; Unit = unit; Sel = sel; Color = color; }
+        public string Name { get; }
+        public string Unit { get; }
+        public Func<TelemetryPoint, double> Sel { get; }
+        public Color Color { get; }
+        public List<WheelSeries>? Wheel { get; init; }
+    }
+
+    private sealed class WheelSeries
+    {
+        public WheelSeries(string name, Func<TelemetryPoint, double> sel)
+        { Name = name; Sel = sel; }
+        public string Name { get; }
+        public Func<TelemetryPoint, double> Sel { get; }
+    }
+
+    // Colori standard per ruota (FL/FR/RL/RR)
+    private static readonly (string Name, Color Color)[] WheelKey =
+    {
+        ("FL", Color.FromRgb(255, 82, 82)),
+        ("FR", Color.FromRgb(105, 240, 174)),
+        ("RL", Color.FromRgb(68, 138, 255)),
+        ("RR", Color.FromRgb(255, 215, 64)),
+    };
+
+    private static Lane WheelLane(string name, string unit,
+        Func<TelemetryPoint, double> fl, Func<TelemetryPoint, double> fr,
+        Func<TelemetryPoint, double> rl, Func<TelemetryPoint, double> rr)
+        => new Lane(name, unit, fl, WheelKey[0].Color)
+        {
+            Wheel = new List<WheelSeries>
+            {
+                new("FL", fl), new("FR", fr), new("RL", rl), new("RR", rr)
+            }
+        };
 
     private void OpenDuckDb_Click(object sender, RoutedEventArgs e)
     {
@@ -76,6 +119,7 @@ public partial class MainWindow : Window
             SessionInfo.Text = string.Empty;
             BtnSaveLap.IsEnabled = false;
             SessionHeader.Text = string.Empty;
+            
 
             _selectedFile = filePath;
             StatusText.Text = $"Lettura: {System.IO.Path.GetFileName(filePath)}...";
@@ -108,6 +152,7 @@ public partial class MainWindow : Window
 
             _allPoints = session.Points;
             _allLaps = session.Laps;
+            RefreshChannelAvailability();
 
             // Calcola info giri
             for (int i = 0; i < _allLaps.Count; i++)
@@ -155,6 +200,33 @@ public partial class MainWindow : Window
         }
     }
 
+
+    private void CursorSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        _cursorFrac = CursorSlider.Value / 1000.0;   // sempre, anche senza linea
+        if (_cursorLine == null) return;
+        UpdateCursorVisual();
+    }
+
+    private void UpdateCursorVisual()
+    {
+        _cursorFrac = CursorSlider.Value / 1000.0;
+        if (_cursorLine == null || _cursorLabel == null || _plotW <= 0) return;
+
+        double x = LeftPad + _cursorFrac * _plotW;
+
+        _cursorLine.X1 = x;
+        _cursorLine.X2 = x;
+        _cursorLine.Y1 = TopPad;
+        _cursorLine.Y2 = ChartCanvas.ActualHeight;
+
+        _cursorLabel.Text = _axisDistance
+            ? $"{_cursorFrac * _xSpan:F0} m"
+            : $"{_cursorFrac * _xSpan:F2} s";
+
+        Canvas.SetLeft(_cursorLabel, x + 4);
+        Canvas.SetTop(_cursorLabel, TopPad + 2);
+    }
 
     // Risale dal punto cliccato all'elemento della lista, gestendo sia
     // Visual sia ContentElement (es. <Run> dentro TextBlock: il genitore
@@ -331,6 +403,22 @@ public partial class MainWindow : Window
             lanes.Add(new Lane("Steering", "raw", p => p.Steering, Color.FromRgb(150, 255, 130)));
         if (ChkRpm.IsChecked == true)
             lanes.Add(new Lane("Engine RPM", "rpm", p => p.RPM, Color.FromRgb(255, 205, 60)));
+        if (ChkSoC.IsChecked == true)
+            lanes.Add(new Lane("SoC", "%", p => p.SoC, Color.FromRgb(186, 104, 255)));
+        if (ChkErs.IsChecked == true)
+            lanes.Add(new Lane("ERS power", "%/s", p => p.ErsPower, Color.FromRgb(0, 230, 118)));
+        if (ChkTyreTemp.IsChecked == true)
+            lanes.Add(WheelLane("Tyre temp (carcass)", "°C",
+                p => p.TyreTempFL, p => p.TyreTempFR, p => p.TyreTempRL, p => p.TyreTempRR));
+        if (ChkTyreWear.IsChecked == true)
+            lanes.Add(WheelLane("Tyre wear", "",
+                p => p.TyreWearFL, p => p.TyreWearFR, p => p.TyreWearRL, p => p.TyreWearRR));
+        if (ChkBrakeTemp.IsChecked == true)
+            lanes.Add(WheelLane("Brake temp", "°C",
+                p => p.BrakeTempFL, p => p.BrakeTempFR, p => p.BrakeTempRL, p => p.BrakeTempRR));
+        if (ChkBrakeWear.IsChecked == true)
+            lanes.Add(WheelLane("Brake wear", "mm",
+                p => p.BrakeWearFL, p => p.BrakeWearFR, p => p.BrakeWearRL, p => p.BrakeWearRR));
 
         if (lanes.Count == 0)
         {
@@ -453,44 +541,103 @@ public partial class MainWindow : Window
         }
 
         // ---- TRACCE DEI CANALI ----
-        for (int gi = 0; gi < entries.Count; gi++)
+        for (int i = 0; i < lanes.Count; i++)
         {
-            var entry = entries[gi];
-            bool dashed = gi > 0;
+            var lane = lanes[i];
+            double laneTop = TopPad + (laneOffset + i) * laneH;
+            double traceTop = laneTop + 4;
+            double traceH = Math.Max(6, laneH - 11);
 
-            // Risoluzione adattiva: sotto i 15k campioni disegniamo TUTTI i punti
-            // (come i tool professionali), sopra usiamo il min/max bucketing.
-            int buckets = entry.Points.Count <= 15000 ? entry.Points.Count : 6000;
-
-            for (int i = 0; i < lanes.Count; i++)
+            // Scala condivisa su tutta la corsia
+            double vMin = double.MaxValue, vMax = double.MinValue;
+            if (lane.Wheel != null)
             {
-                var lane = lanes[i];
-                double laneTop = TopPad + (laneOffset + i) * laneH;
-                double traceTop = laneTop + 4;
-                double traceH = Math.Max(6, laneH - 11);
+                foreach (var e in entries)
+                    foreach (var p in e.Points)
+                        foreach (var ws in lane.Wheel)
+                        {
+                            double v = ws.Sel(p);
+                            if (v < vMin) vMin = v;
+                            if (v > vMax) vMax = v;
+                        }
+            }
+            else
+            {
+                foreach (var e in entries)
+                    foreach (var p in e.Points)
+                    {
+                        double v = lane.Sel(p);
+                        if (v < vMin) vMin = v;
+                        if (v > vMax) vMax = v;
+                    }
+            }
+            double vSpan = vMax - vMin;
+            if (vSpan < 1e-9) { vMin -= 0.5; vSpan = 1.0; }
 
-                double vMin = double.MaxValue, vMax = double.MinValue;
-                foreach (var p in entry.Points)
+            if (lane.Wheel != null)
+            {
+                // Una serie per giro per ruota: in confronto i colori sono quelli
+                // del giro (ciano/arancio), in singolo quelli della ruota.
+                for (int gi = 0; gi < entries.Count; gi++)
                 {
-                    double v = lane.Sel(p);
-                    if (v < vMin) vMin = v;
-                    if (v > vMax) vMax = v;
+                    var entry = entries[gi];
+                    int buckets = entry.Points.Count <= 15000 ? entry.Points.Count : 6000;
+
+                    for (int w = 0; w < lane.Wheel.Count; w++)
+                    {
+                        var ws = lane.Wheel[w];
+                        var col = compareMode ? LapColors[gi] : WheelKey[w].Color;
+                        var brush = new SolidColorBrush(Color.FromArgb(200, col.R, col.G, col.B));
+
+                        var poly = new Polyline
+                        {
+                            Points = BuildTrace(entry.Points, selX, ws.Sel, 0, xSpan, vMin, vSpan, plotW, traceH, buckets),
+                            Stroke = brush,
+                            StrokeThickness = 1.0,
+                            RenderTransform = new TranslateTransform(LeftPad, traceTop)
+                        };
+                        ChartCanvas.Children.Add(poly);
+
+                        // Etichetta ruota all'inizio della linea
+                        double v0 = ws.Sel(entry.Points[0]);
+                        double y0 = traceTop + traceH - ((v0 - vMin) / vSpan) * traceH;
+                        var tag = Label(ws.Name, 9, col);
+                        Canvas.SetLeft(tag, LeftPad + 2);
+                        Canvas.SetTop(tag, gi == 0 ? y0 - 11 : y0 + 2);
+                        ChartCanvas.Children.Add(tag);
+                    }
                 }
-                double vSpan = vMax - vMin;
-                if (vSpan < 1e-9) { vMin -= 0.5; vSpan = 1.0; }
-
-                var baseCol = compareMode ? LapColors[gi] : lane.Color;
-                var brush = new SolidColorBrush(baseCol);
-
-                var poly = new Polyline
+            }
+            else
+            {
+                for (int gi = 0; gi < entries.Count; gi++)
                 {
-                    Points = BuildTrace(entry.Points, selX, lane.Sel, 0, xSpan, vMin, vSpan, plotW, traceH, buckets),
-                    Stroke = brush,
-                    StrokeThickness = dashed ? 0.9 : 1.0,
-                    RenderTransform = new TranslateTransform(LeftPad, traceTop)
-                };
+                    var entry = entries[gi];
+                    var baseCol = compareMode ? LapColors[gi] : lane.Color;
+                    int buckets = entry.Points.Count <= 15000 ? entry.Points.Count : 6000;
+                    var poly = new Polyline
+                    {
+                        Points = BuildTrace(entry.Points, selX, lane.Sel, 0, xSpan, vMin, vSpan, plotW, traceH, buckets),
+                        Stroke = new SolidColorBrush(baseCol),
+                        StrokeThickness = 1.0,
+                        RenderTransform = new TranslateTransform(LeftPad, traceTop)
+                    };
+                    ChartCanvas.Children.Add(poly);
+                }
+            }
 
-                ChartCanvas.Children.Add(poly);
+            // Scala numerica a sinistra per le corsie di temperatura
+            if (lane.Unit == "°C")
+            {
+                double[] ticks = { vMax, (vMax + vMin) / 2, vMin };
+                foreach (var tv in ticks)
+                {
+                    double ty = traceTop + traceH - ((tv - vMin) / vSpan) * traceH;
+                    var t = Label(tv.ToString("0"), 9, Color.FromRgb(150, 150, 155));
+                    Canvas.SetLeft(t, LeftPad + 4);
+                    Canvas.SetTop(t, ty - 6);
+                    ChartCanvas.Children.Add(t);
+                }
             }
         }
 
@@ -512,23 +659,19 @@ public partial class MainWindow : Window
             ChartCanvas.Children.Add(unit);
         }
 
-        // ---- LEGENDA (sotto il plot: non copre mai i dati) ----
-        // Per ogni giro disegna un campione di linea REALE (continua o tratteggiata)
-        // seguito dall'etichetta del giro, così l'associazione è immediata.
+        // ---- LEGENDA ----
+        double legendY = TopPad + plotH + 26;
+        double lx = LeftPad;
+
         if (compareMode)
         {
-            double legendY = TopPad + plotH + 26;
-            double lx = LeftPad;
             for (int gi = 0; gi < entries.Count; gi++)
             {
-                bool dashed = gi > 0;
                 var col = LapColors[gi];
-
                 var sw = new Line
                 {
                     X1 = lx, Y1 = legendY + 7, X2 = lx + 30, Y2 = legendY + 7,
-                    Stroke = new SolidColorBrush(col),
-                    StrokeThickness = 1.0
+                    Stroke = new SolidColorBrush(col), StrokeThickness = 1.0
                 };
                 ChartCanvas.Children.Add(sw);
 
@@ -539,7 +682,67 @@ public partial class MainWindow : Window
 
                 lx += 36 + entries[gi].Label.Length * 6.3 + 28;
             }
-        }  
+        }
+
+        // Chiave ruote solo in singolo: in confronto il colore identifica il giro
+        // e le etichette a inizio riga identificano la ruota.
+        if (!compareMode && lanes.Any(l => l.Wheel != null))
+        {
+            for (int w = 0; w < 4; w++)
+            {
+                var sw2 = new Line
+                {
+                    X1 = lx, Y1 = legendY + 7, X2 = lx + 18, Y2 = legendY + 7,
+                    Stroke = new SolidColorBrush(WheelKey[w].Color), StrokeThickness = 1.0
+                };
+                ChartCanvas.Children.Add(sw2);
+
+                var t2 = Label(WheelKey[w].Name, 11, WheelKey[w].Color);
+                Canvas.SetLeft(t2, lx + 22);
+                Canvas.SetTop(t2, legendY);
+                ChartCanvas.Children.Add(t2);
+
+                lx += 22 + WheelKey[w].Name.Length * 6.3 + 24;
+            }
+        }
+
+        // Nota sulla sovrapposizione delle tracce per-ruota
+        if (lanes.Any(l => l.Wheel != null))
+        {
+            var note = Label("Overlapping wheel traces blend: higher saturation = coincident lines",
+                            10, Color.FromRgb(140, 140, 145));
+            Canvas.SetLeft(note, lx + 10);
+            Canvas.SetTop(note, legendY);
+            ChartCanvas.Children.Add(note);
+        }
+
+
+        // ---- CURSORE VERTICALE ----
+        _plotW = plotW;
+        _plotH = plotH;
+        _xSpan = xSpan;
+        _axisDistance = RbDistance.IsChecked == true;
+
+        if (entries.Count > 0)
+        {
+            _cursorLine = new Line
+            {
+                Stroke = new SolidColorBrush(Color.FromArgb(220, 255, 255, 255)),
+                StrokeThickness = 0.6
+            };
+            ChartCanvas.Children.Add(_cursorLine);
+
+            _cursorLabel = Label("", 10, Color.FromRgb(230, 230, 235));
+            ChartCanvas.Children.Add(_cursorLabel);
+
+            UpdateCursorVisual();
+        }
+        else
+        {
+            _cursorLine = null;
+            _cursorLabel = null;
+        }
+
     }
     private PointCollection BuildTrace(
         List<TelemetryPoint> points,
@@ -692,7 +895,17 @@ public partial class MainWindow : Window
             {
                 Time = p.Time - lapInfo.StartTime,
                 Speed = p.Speed, Throttle = p.Throttle, Brake = p.Brake,
-                Steering = p.Steering, RPM = p.RPM
+                Steering = p.Steering, RPM = p.RPM,
+                SoC = p.SoC,
+                ErsPower = p.ErsPower,
+                TyreTempFL = p.TyreTempFL, TyreTempFR = p.TyreTempFR,
+                TyreTempRL = p.TyreTempRL, TyreTempRR = p.TyreTempRR,
+                TyreWearFL = p.TyreWearFL, TyreWearFR = p.TyreWearFR,
+                TyreWearRL = p.TyreWearRL, TyreWearRR = p.TyreWearRR,
+                BrakeWearFL = p.BrakeWearFL, BrakeWearFR = p.BrakeWearFR,
+                BrakeWearRL = p.BrakeWearRL, BrakeWearRR = p.BrakeWearRR,
+                BrakeTempFL = p.BrakeTempFL, BrakeTempFR = p.BrakeTempFR,
+                BrakeTempRL = p.BrakeTempRL, BrakeTempRR = p.BrakeTempRR
             })
             .ToList();
 
@@ -809,13 +1022,61 @@ public partial class MainWindow : Window
             var p = pts[i];
             result.Add(new SavedPoint
             {
-                T = p.Time, S = p.Speed, Th = p.Throttle, Br = p.Brake, St = p.Steering, R = p.RPM
+                T = p.Time, 
+                S = p.Speed, 
+                Th = p.Throttle, 
+                Br = p.Brake, 
+                St = p.Steering, 
+                R = p.RPM,
+                SoC = p.SoC,
+                Ers = p.ErsPower,
+                Tt1 = p.TyreTempFL, 
+                Tt2 = p.TyreTempFR, 
+                Tt3 = p.TyreTempRL, 
+                Tt4 = p.TyreTempRR,
+                Tw1 = p.TyreWearFL, 
+                Tw2 = p.TyreWearFR, 
+                Tw3 = p.TyreWearRL, 
+                Tw4 = p.TyreWearRR,
+                Bt1 = p.BrakeTempFL, 
+                Bt2 = p.BrakeTempFR, 
+                Bt3 = p.BrakeTempRL, 
+                Bt4 = p.BrakeTempRR,
+                Bw1 = p.BrakeWearFL, 
+                Bw2 = p.BrakeWearFR, 
+                Bw3 = p.BrakeWearRL, 
+                Bw4 = p.BrakeWearRR,
             });
         }
 
         var last = pts[^1];
         if (result.Count == 0 || Math.Abs(result[^1].T - last.Time) > 1e-6)
-            result.Add(new SavedPoint { T = last.Time, S = last.Speed, Th = last.Throttle, Br = last.Brake, St = last.Steering, R = last.RPM });
+            result.Add(new SavedPoint { 
+                T = last.Time, 
+                S = last.Speed, 
+                Th = last.Throttle, 
+                Br = last.Brake, 
+                St = last.Steering, 
+                R = last.RPM,
+                SoC = last.SoC,
+                Ers = last.ErsPower,
+                Tt1 = last.TyreTempFL, 
+                Tt2 = last.TyreTempFR, 
+                Tt3 = last.TyreTempRL, 
+                Tt4 = last.TyreTempRR,
+                Tw1 = last.TyreWearFL, 
+                Tw2 = last.TyreWearFR, 
+                Tw3 = last.TyreWearRL, 
+                Tw4 = last.TyreWearRR,
+                Bt1 = last.BrakeTempFL, 
+                Bt2 = last.BrakeTempFR, 
+                Bt3 = last.BrakeTempRL, 
+                Bt4 = last.BrakeTempRR,
+                Bw1 = last.BrakeWearFL, 
+                Bw2 = last.BrakeWearFR, 
+                Bw3 = last.BrakeWearRL, 
+                Bw4 = last.BrakeWearRR, 
+            });
 
         return result;
     }
@@ -1006,7 +1267,7 @@ public partial class MainWindow : Window
             var c = CultureInfo.CurrentCulture;
             var sb = new StringBuilder(1 << 20);
 
-            sb.AppendLine("Time_s;Lap;Speed_kmh;Throttle_pct;Brake_pct;Steering;Engine_RPM");
+            sb.AppendLine("Time_s;Speed_kmh;Throttle_pct;Brake_pct;Steering;RPM;SoC_pct;ERS_pct_s;TyreTemp_FL;TyreTemp_FR;TyreTemp_RL;TyreTemp_RR;TyreWear_FL;TyreWear_FR;TyreWear_RL;TyreWear_RR;BrakeTemp_FL;BrakeTemp_FR;BrakeTemp_RL;BrakeTemp_RR;BrakeWear_FL;BrakeWear_FR;BrakeWear_RL;BrakeWear_RR");
 
             int lapIdx = 0;
             foreach (var p in _allPoints)
@@ -1020,7 +1281,25 @@ public partial class MainWindow : Window
                   .Append((p.Throttle * 100).ToString("0.##", c)).Append(';')
                   .Append((p.Brake * 100).ToString("0.##", c)).Append(';')
                   .Append(p.Steering.ToString("0.####", c)).Append(';')
-                  .Append(p.RPM.ToString("0.#", c)).Append('\n');
+                  .Append(p.RPM.ToString("0.#", c)).Append(';')
+                  .Append((p.SoC * 100).ToString("0.##", c)).Append(';')
+                  .Append(p.ErsPower.ToString("0.##", c)).Append(';')
+                  .Append(p.TyreTempFL.ToString("0.##", c)).Append(';')
+                  .Append(p.TyreTempFR.ToString("0.##", c)).Append(';')
+                  .Append(p.TyreTempRL.ToString("0.##", c)).Append(';')
+                  .Append(p.TyreTempRR.ToString("0.##", c)).Append(';')
+                  .Append((p.TyreWearFL * 100).ToString("0.##", c)).Append(';')
+                  .Append((p.TyreWearFR * 100).ToString("0.##", c)).Append(';')
+                  .Append((p.TyreWearRL * 100).ToString("0.##", c)).Append(';')
+                  .Append((p.TyreWearRR * 100).ToString("0.##", c)).Append(';')
+                  .Append(p.BrakeWearRR.ToString("0.###", c)).Append(';')
+                  .Append(p.BrakeTempFL.ToString("0.##", c)).Append(';')
+                  .Append(p.BrakeTempFR.ToString("0.##", c)).Append(';')
+                  .Append(p.BrakeTempRL.ToString("0.##", c)).Append(';')
+                  .Append((p.BrakeWearFL * 100).ToString("0.##", c)).Append(';')
+                  .Append((p.BrakeWearFR * 100).ToString("0.##", c)).Append(';')
+                  .Append((p.BrakeWearRL * 100).ToString("0.##", c)).Append(';')
+                  .Append((p.BrakeWearRR * 100).ToString("0.##", c)).Append('\n');
             }
 
             File.WriteAllText(dlg.FileName, sb.ToString(), Encoding.UTF8);
@@ -1135,7 +1414,17 @@ public partial class MainWindow : Window
                     {
                         Time = p.Time - li.StartTime,
                         Speed = p.Speed, Throttle = p.Throttle, Brake = p.Brake,
-                        Steering = p.Steering, RPM = p.RPM
+                        Steering = p.Steering, RPM = p.RPM,
+                        SoC = p.SoC,
+                        ErsPower = p.ErsPower,
+                        TyreTempFL = p.TyreTempFL, TyreTempFR = p.TyreTempFR,
+                        TyreTempRL = p.TyreTempRL, TyreTempRR = p.TyreTempRR,
+                        TyreWearFL = p.TyreWearFL, TyreWearFR = p.TyreWearFR,
+                        TyreWearRL = p.TyreWearRL, TyreWearRR = p.TyreWearRR,
+                        BrakeTempFL = p.BrakeTempFL, BrakeTempFR = p.BrakeTempFR,
+                        BrakeTempRL = p.BrakeTempRL, BrakeTempRR = p.BrakeTempRR,
+                        BrakeWearFL = p.BrakeWearFL, BrakeWearFR = p.BrakeWearFR,
+                        BrakeWearRL = p.BrakeWearRL, BrakeWearRR = p.BrakeWearRR
                     }).ToList();
 
                 ComputeDistance(pts);
@@ -1163,7 +1452,13 @@ public partial class MainWindow : Window
                 var ptsSaved = saved.Points.Select(sp => new TelemetryPoint
                 {
                     Time = sp.T, Speed = sp.S, Throttle = sp.Th, Brake = sp.Br,
-                    Steering = sp.St, RPM = sp.R
+                    Steering = sp.St, RPM = sp.R,
+                    SoC = sp.SoC,
+                    ErsPower = sp.Ers,
+                    TyreTempFL = sp.Tt1, TyreTempFR = sp.Tt2, TyreTempRL = sp.Tt3, TyreTempRR = sp.Tt4,
+                    TyreWearFL = sp.Tw1, TyreWearFR = sp.Tw2, TyreWearRL = sp.Tw3, TyreWearRR = sp.Tw4,
+                    BrakeTempFL = sp.Bt1, BrakeTempFR = sp.Bt2, BrakeTempRL = sp.Bt3, BrakeTempRR = sp.Bt4,
+                    BrakeWearFL = sp.Bw1, BrakeWearFR = sp.Bw2, BrakeWearRL = sp.Bw3, BrakeWearRR = sp.Bw4,
                 }).ToList();
 
                 ComputeDistance(ptsSaved);
@@ -1186,5 +1481,16 @@ public partial class MainWindow : Window
         }
 
         DrawChart(entries);
+        CursorSlider.Visibility = entries.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RefreshChannelAvailability()
+    {
+        ChkSoC.IsEnabled       = _reader.AvailableChannels.Contains("SoC");
+        ChkErs.IsEnabled       = _reader.AvailableChannels.Contains("ERS");
+        ChkTyreTemp.IsEnabled  = _reader.AvailableChannels.Contains("TyreTemp");
+        ChkTyreWear.IsEnabled  = _reader.AvailableChannels.Contains("TyreWear");
+        ChkBrakeTemp.IsEnabled = _reader.AvailableChannels.Contains("BrakeTemp");
+        ChkBrakeWear.IsEnabled = _reader.AvailableChannels.Contains("BrakeWear");
     }
 }

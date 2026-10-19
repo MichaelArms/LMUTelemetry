@@ -21,6 +21,27 @@ public class TelemetryPoint
     public double RPM { get; set; }
     public double Throttle { get; set; }
     public double Brake { get; set; }
+    public double SoC { get; set; }
+    public double ErsPower { get; set; }        // %/s: positivo = deploy, negativo = regen
+
+    public double TyreTempFL { get; set; }
+    public double TyreTempFR { get; set; }
+    public double TyreTempRL { get; set; }
+    public double TyreTempRR { get; set; }
+
+    public double TyreWearFL { get; set; }
+    public double TyreWearFR { get; set; }
+    public double TyreWearRL { get; set; }
+    public double TyreWearRR { get; set; }
+
+    public double BrakeWearFL { get; set; }
+    public double BrakeWearFR { get; set; }
+    public double BrakeWearRL { get; set; }
+    public double BrakeWearRR { get; set; }
+    public double BrakeTempFL { get; set; }
+    public double BrakeTempFR { get; set; }
+    public double BrakeTempRL { get; set; }
+    public double BrakeTempRR { get; set; }
 }
 
 public class LapMarker
@@ -54,8 +75,28 @@ public class SavedPoint
     public double Br { get; set; }
     public double St { get; set; }
     public double R { get; set; }
-}
+    public double SoC { get; set; }
+    public double Ers { get; set; }
 
+    public double Tt1 { get; set; }
+    public double Tt2 { get; set; }
+    public double Tt3 { get; set; }
+    public double Tt4 { get; set; }
+
+    public double Tw1 { get; set; }
+    public double Tw2 { get; set; }
+    public double Tw3 { get; set; }
+    public double Tw4 { get; set; }
+
+    public double Bw1 { get; set; }
+    public double Bw2 { get; set; }
+    public double Bw3 { get; set; }
+    public double Bw4 { get; set; }
+    public double Bt1 { get; set; }
+    public double Bt2 { get; set; }
+    public double Bt3 { get; set; }
+    public double Bt4 { get; set; }
+}
 public class ComparisonEntry
 {
     public string Label { get; set; } = "";

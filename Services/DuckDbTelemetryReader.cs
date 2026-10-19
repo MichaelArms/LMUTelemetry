@@ -126,6 +126,7 @@ public class DuckDbTelemetryReader
         }
         catch { }
 
+        EnrichHybridAndWear(session.Points, filePath);
         session.DebugInfo = debugInfo.ToString();
         return session;
     }
@@ -153,5 +154,180 @@ public class DuckDbTelemetryReader
         catch { }
 
         return result;
+    }
+
+    public HashSet<string> AvailableChannels { get; } = new();
+
+    // Allinea un canale a frequenza inferiore sulla timeline master
+    // tramite interpolazione lineare sull'indice (campionamento uniforme).
+    private static double[] Align(List<double> raw, int masterCount)
+    {
+        var result = new double[masterCount];
+        int n = raw.Count;
+        if (n == 0) return result;
+        if (n == 1) { for (int i = 0; i < masterCount; i++) result[i] = raw[0]; return result; }
+
+        for (int m = 0; m < masterCount; m++)
+        {
+            double f = (double)m * (n - 1) / (masterCount - 1);
+            int i0 = (int)Math.Floor(f);
+            int i1 = Math.Min(n - 1, i0 + 1);
+            double frac = f - i0;
+            result[m] = raw[i0] * (1 - frac) + raw[i1] * frac;
+        }
+        return result;
+    }
+
+    private static List<double>[]? ReadWheelTable(string connStr, string table, int masterCount)
+    {
+        try
+        {
+            using var conn = new DuckDBConnection(connStr);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT value1, value2, value3, value4 FROM \"{table}\" ORDER BY rowid";
+            using var r = cmd.ExecuteReader();
+
+            var cols = new[] { new List<double>(), new List<double>(), new List<double>(), new List<double>() };
+            while (r.Read())
+                for (int k = 0; k < 4; k++)
+                    cols[k].Add(Convert.ToDouble(r.GetValue(k)));
+
+            if (cols[0].Count == 0) return null;
+            for (int k = 0; k < 4; k++)
+            {
+                var aligned = Align(cols[k], masterCount);
+                cols[k] = new List<double>(aligned);
+            }
+            return cols;
+        }
+        catch 
+        {
+            return null;
+        }
+    }
+
+    private static double[]? ReadSingleTable(string connStr, string table, int masterCount)
+    {
+        try
+        {
+            using var conn = new DuckDBConnection(connStr);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT value FROM \"{table}\" ORDER BY rowid";
+            using var r = cmd.ExecuteReader();
+
+            var raw = new List<double>();
+            while (r.Read()) raw.Add(Convert.ToDouble(r.GetValue(0)));
+            if (raw.Count == 0) return null;
+            return Align(raw, masterCount);
+        }
+        catch 
+        {
+            return null;
+        }
+    }
+
+    // Arricchisce i punti master con SoC/ERS e canali per-ruota
+    public void EnrichHybridAndWear(List<TelemetryPoint> points, string filePath)
+    {
+        if (points.Count < 2) return;
+        string connStr = $"Data Source={filePath}";
+        int n = points.Count;
+
+        var soc = ReadSingleTable(connStr, "SoC", n);
+        if (soc != null)
+        {
+            AvailableChannels.Add("SoC");
+            AvailableChannels.Add("ERS");
+            for (int i = 0; i < n; i++)
+            {
+                points[i].SoC = soc[i];
+                if (i > 0)
+                {
+                    double dt = points[i].Time - points[i - 1].Time;
+                    points[i].ErsPower = dt > 1e-9 ? -(soc[i] - soc[i - 1]) / dt : 0.0;
+                }
+            }
+        }
+
+        var tt = ReadWheelTable(connStr, "TyresCarcassTemp", n);
+        if (tt != null)
+        {
+            AvailableChannels.Add("TyreTemp");
+            for (int i = 0; i < n; i++)
+            {
+                points[i].TyreTempFL = tt[0][i]; points[i].TyreTempFR = tt[1][i];
+                points[i].TyreTempRL = tt[2][i]; points[i].TyreTempRR = tt[3][i];
+            }
+        }
+
+        var tw = ReadWheelTable(connStr, "Tyres Wear", n);
+        if (tw != null)
+        {
+            AvailableChannels.Add("TyreWear");
+            for (int i = 0; i < n; i++)
+            {
+                points[i].TyreWearFL = tw[0][i]; points[i].TyreWearFR = tw[1][i];
+                points[i].TyreWearRL = tw[2][i]; points[i].TyreWearRR = tw[3][i];
+            }
+        }
+
+        var bw = ReadWheelTable(connStr, "Brake Thickness", n);
+        if (bw != null)
+        {
+            // Verifica se il canale è realmente dinamico in questa sessione
+            bool dynamic = false;
+            for (int i = 1; i < n && !dynamic; i++)
+            {
+                if (Math.Abs(bw[0][i] - bw[0][0]) > 1e-6 ||
+                    Math.Abs(bw[1][i] - bw[1][0]) > 1e-6 ||
+                    Math.Abs(bw[2][i] - bw[2][0]) > 1e-6 ||
+                    Math.Abs(bw[3][i] - bw[3][0]) > 1e-6)
+                    dynamic = true;
+            }
+
+            if (dynamic)
+            {
+                AvailableChannels.Add("BrakeWear");
+                for (int i = 0; i < n; i++)
+                {
+                    points[i].BrakeWearFL = bw[0][i]; points[i].BrakeWearFR = bw[1][i];
+                    points[i].BrakeWearRL = bw[2][i]; points[i].BrakeWearRR = bw[3][i];
+                }
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "[BrakeWear] static channel: LMU does not simulate brake wear in-session");
+            }
+        }
+
+       var bt = ReadWheelTable(connStr, "Brakes Temp", n);
+        if (bt != null)
+        {
+            bool dyn = false;
+            for (int i = 1; i < n && !dyn; i++)
+            {
+                if (Math.Abs(bt[0][i] - bt[0][0]) > 1e-6 || Math.Abs(bt[1][i] - bt[1][0]) > 1e-6 ||
+                    Math.Abs(bt[2][i] - bt[2][0]) > 1e-6 || Math.Abs(bt[3][i] - bt[3][0]) > 1e-6)
+                    dyn = true;
+            }
+
+            if (dyn)
+            {
+                AvailableChannels.Add("BrakeTemp");
+                for (int i = 0; i < n; i++)
+                {
+                    points[i].BrakeTempFL = bt[0][i]; points[i].BrakeTempFR = bt[1][i];
+                    points[i].BrakeTempRL = bt[2][i]; points[i].BrakeTempRR = bt[3][i];
+                }
+                
+            }
+            
+        }
+
+
+
     }
 }

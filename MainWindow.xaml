@@ -38,7 +38,7 @@
         </StackPanel>
 
         <!-- Channel selectors -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
             <TextBlock Text="Channels:" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="White"/>
             <CheckBox x:Name="ChkSpeed"    Content="Speed"    IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkThrottle" Content="Throttle" IsChecked="True"  VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
@@ -46,10 +46,18 @@
             <CheckBox x:Name="ChkSteering" Content="Steering" IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkRpm"      Content="RPM"      IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
             <CheckBox x:Name="ChkHideShifts" Content="Hide shift cuts" IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
-            <TextBlock Text="   X axis:" VerticalAlignment="Center" Margin="24,0,8,0" Foreground="White"/>
+
+            <CheckBox x:Name="ChkSoC"       Content="SoC"        IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+            <CheckBox x:Name="ChkErs"       Content="ERS power"  IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+            <CheckBox x:Name="ChkTyreTemp"  Content="Tyre temp"  IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+            <CheckBox x:Name="ChkTyreWear"  Content="Tyre wear"  IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+            <CheckBox x:Name="ChkBrakeTemp" Content="Brake temp" IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+            <CheckBox x:Name="ChkBrakeWear" Content="Brake wear" IsChecked="False" VerticalAlignment="Center" Margin="0,0,14,0" Click="Channel_Click" Foreground="White"/>
+
+            <TextBlock Text="   X axis:" VerticalAlignment="Center" Margin="10,0,8,0" Foreground="White"/>
             <RadioButton x:Name="RbTime" Content="Time" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="White" Click="Axis_Click"/>
             <RadioButton x:Name="RbDistance" Content="Distance" VerticalAlignment="Center" Foreground="White" Click="Axis_Click"/>
-        </StackPanel>
+        </WrapPanel>
 
         <!-- Session info -->
         <TextBlock Grid.Row="2" x:Name="SessionInfo" FontSize="13" Foreground="#B0B0B0" Margin="0,0,0,8"/>
@@ -158,7 +166,20 @@
 
             <!-- Chart -->
             <Border Grid.Column="2" Background="#212124" BorderBrush="#3A3A3E" BorderThickness="1">
-                <Canvas x:Name="ChartCanvas" ClipToBounds="True" SizeChanged="ChartCanvas_SizeChanged"/>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Canvas Grid.Row="0" x:Name="ChartCanvas" Background="#1E1E20" ClipToBounds="True" 
+                            SizeChanged="ChartCanvas_SizeChanged"/>
+
+                    <Slider Grid.Row="1" x:Name="CursorSlider"
+                            Minimum="0" Maximum="1000" Value="0"
+                            Margin="69,0,7,8"
+                            ValueChanged="CursorSlider_ValueChanged"/>
+                </Grid>
             </Border>
         </Grid>
     </Grid>
